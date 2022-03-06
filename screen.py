@@ -586,6 +586,42 @@ class KlipperScreen(Gtk.Window):
                 self.subscriptions.pop(i)
                 return
 
+    def search_power_devices(self):
+        if self.printer is not None:
+            power_devices = found_devices = []
+            printer = self.connected_printer
+            if printer is not None:
+                printer_cfg = self._config.get_printer_config(printer)
+            if printer_cfg is not None:
+                power_on_screen_wakeup = printer_cfg.getboolean("power_on_screen_wakeup", fallback=False)
+                if power_on_screen_wakeup:
+                    return
+                power_devices = printer_cfg.get("power_devices", "")
+                power_devices = [str(i.strip()) for i in power_devices.split(',')]
+                logging.info("%s associated power devices: %s", printer, power_devices)
+            devices = self.printer.get_power_devices()
+            if devices is not None:
+                for device in devices:
+                    if device == printer:
+                        found_devices.append(printer)
+                    for power_device in power_devices:
+                        if device == power_device:
+                            found_devices.append(power_device)
+            if found_devices:
+                self.power_on(found_devices)
+            else:
+                logging.info("%s power devices not found", printer)
+
+    def power_on(self, devices):
+        _ = self.lang.gettext
+        self.show_popup_message(_("Sending Power ON signal to: %s") % devices, level=1)
+        for device in devices:
+            if self.printer.get_power_device_status(device) == "off":
+                logging.info("%s is OFF, Sending Power ON signal", device)
+                self._ws.klippy.power_device_on(device)
+            elif self.printer.get_power_device_status(device) == "on":
+                logging.info("%s is ON", device)
+
     def check_dpms_state(self):
         state = functions.get_DPMS_state()
 
@@ -605,6 +641,7 @@ class KlipperScreen(Gtk.Window):
             if self.touch_ready:
                 logging.info("DPMS State On -> Showing KlipperScreen")
                 self.show()
+                self.search_power_devices()
                 self.change_cursor()
             else:
                 logging.info("DPMS State On -> Screen touched")
